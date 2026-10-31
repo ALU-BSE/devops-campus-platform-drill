@@ -1,0 +1,107 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Terraform quality gate — optional
+#
+# Run this by hand before a merge. Notice what it does NOT need: no AWS keys,
+# no Azure credentials, no HCP token. That is deliberate.
+#
+#   fmt      is the formatting the same as `terraform fmt` would produce?
+#   init     download the providers  (-backend=false: do not touch remote state)
+#   validate is this configuration internally coherent?
+#   checkov  are there known-insecure patterns in it?
+#
+# None of those four questions require talking to a cloud account, so this
+# pipeline is fast, free, and safe.
+#
+# What it CANNOT tell you is whether your infrastructure is actually CORRECT.
+# `validate` will happily pass a firewall rule that locks you out of your own
+# server. You are going to watch that happen in drill 6. Remember it:
+#
+#     A green pipeline is evidence, not proof.
+#
+# Running a REAL `terraform plan` here — one that reaches into your cloud
+# account and reports what would actually change — is the take-home exercise.
+# It is part of Formative 3.
+# ═══════════════════════════════════════════════════════════════════════════
+
+name: Terraform
+
+# Started by hand from the Actions tab, so it does not use up the org's
+# shared Actions minutes on every push.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Your team declared its track in Setup by writing it into the `.track` file.
+  # This job reads it, so the rest of the pipeline checks YOUR track and does
+  # not fail you for a module your team never touched.
+  track:
+    name: Which track?
+    runs-on: ubuntu-latest
+    outputs:
+      track: ${{ steps.read.outputs.track }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: read
+        run: |
+          track="$(tr -d '[:space:]' < .track)"
+          case "$track" in
+            aws|azure|local) ;;
+            *) echo "::error::.track must contain exactly one of: aws, azure, local (found '$track')"; exit 1 ;;
+          esac
+          echo "track=$track" >> "$GITHUB_OUTPUT"
+          echo "Validating the '$track' track."
+
+  validate:
+    name: Validate
+    needs: track
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform/${{ needs.track.outputs.track }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+
+      - name: Initialise (providers only — does not touch your remote state)
+        run: terraform init -backend=false
+
+      - name: Validate
+        run: terraform validate
+
+  scan:
+    name: Security scan
+    needs: track
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkov (IaC security scan)
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/${{ needs.track.outputs.track }}
+          framework: terraform
+          quiet: true
+          # Reporting, not blocking — for now.
+          #
+          # Checkov WILL find things in this starter (unencrypted disks, wide-open
+          # egress, no IMDSv2). Read them. They are real, and most of them are
+          # defensible for a teaching environment — but you should be the one who
+          # decides that, not the person who silenced the scanner.
+          #
+          # Formative 3 requires this scan to actually BLOCK a bad merge. Flipping
+          # this to `false`, fixing what you can, and documenting the rest in
+          # SECURITY.md is your take-home.
+          soft_fail: true

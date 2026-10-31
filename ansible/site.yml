@@ -1,0 +1,209 @@
+---
+# ═══════════════════════════════════════════════════════════════════════════
+# Campus Notifier — configure the box Terraform built, and deploy the app.
+#
+# Run it:   cd ansible && ansible-playbook site.yml
+#
+# Terraform's job ended at an empty machine. Everything below is the gap between
+# "a box exists" and "the box runs our app", and closing it is the entire reason
+# configuration management exists.
+#
+# The promise you are trying to keep in this file is IDEMPOTENCE:
+#
+#     Running this playbook twice must be indistinguishable from running it once.
+#
+# The second run should report `changed=0` and do nothing at all. If it doesn't,
+# you have not written configuration management — you have written a shell script
+# with extra steps.
+# ═══════════════════════════════════════════════════════════════════════════
+
+- name: Configure the database
+  hosts: database
+  become: true
+  vars_files:
+    - secrets.yml
+
+  tasks:
+    - name: Refresh the apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install Postgres
+      ansible.builtin.apt:
+        name: "{{ db_packages }}"
+        state: present
+
+    - name: Find the Postgres version folder
+      ansible.builtin.find:
+        paths: /etc/postgresql
+        file_type: directory
+        recurse: false
+      register: pg_versions
+
+    - name: Remember where the Postgres config lives
+      ansible.builtin.set_fact:
+        pg_conf_dir: "{{ pg_versions.files[0].path }}/main"
+
+    # Postgres listens on localhost by default, so the app cannot reach it even
+    # when the firewall allows it. Both have to say yes.
+    - name: Listen on the network
+      ansible.builtin.lineinfile:
+        path: "{{ pg_conf_dir }}/postgresql.conf"
+        regexp: "^#?listen_addresses"
+        line: "listen_addresses = '*'"
+      notify: Restart postgres
+
+    - name: Allow the app server, and only the app server
+      ansible.builtin.lineinfile:
+        path: "{{ pg_conf_dir }}/pg_hba.conf"
+        line: "host {{ db_name }} {{ db_user }} {{ hostvars['app'].private_ip }}/32 scram-sha-256"
+      notify: Restart postgres
+
+    - name: Apply the config before creating anything
+      ansible.builtin.meta: flush_handlers
+
+    - name: Ensure Postgres is running and starts on boot
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: true
+
+    - name: Create the database user
+      community.postgresql.postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+      become_user: postgres
+      no_log: true # keeps the password out of the output
+
+    - name: Create the database
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+        owner: "{{ db_user }}"
+      become_user: postgres
+
+  handlers:
+    - name: Restart postgres
+      ansible.builtin.service:
+        name: postgresql
+        state: restarted
+
+- name: Configure Campus Notifier host
+  hosts: campus_notifier
+  become: true # every task below needs root. `become` is sudo, done properly.
+  vars_files:
+    - secrets.yml
+
+  tasks:
+    # ── Make the box able to run containers ───────────────────────────────
+
+    - name: Refresh the apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600 # don't re-fetch if we did it in the last hour
+      # ^ THIS is what idempotence looks like in a module: it knows when it can
+      #   safely do nothing.
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name: "{{ base_packages }}"
+        state: present
+      # `state: present` means "make sure it's there", NOT "install it".
+      # The difference is the whole subject. Ansible checks first, and only acts
+      # if reality does not already match what you asked for.
+
+    # TODO (drill 9): a Docker daemon inside a container (the local track) can fail
+    # on its default storage driver, because overlayfs does not stack on overlayfs:
+    #
+    #     failed to mount ... fstype: overlay ... invalid argument
+    #
+    # On a real VM the default is correct, and vfs would be needlessly slow. Uncomment
+    # these two tasks and write the condition so the config applies only inside a
+    # container, using the fact you found in drill 7.
+    #
+    # Read: https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_conditionals.html
+    #       https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_handlers.html
+    # Done when: `docker info` on the box reports vfs on local, and not on a cloud VM.
+    #
+    # - name: Configure the Docker daemon for nested containers
+    #   ansible.builtin.copy:
+    #     content: |
+    #       {
+    #         "storage-driver": "vfs"
+    #       }
+    #     dest: /etc/docker/daemon.json
+    #     mode: "0644"
+    #   when: ...
+    #   notify: Restart docker
+    #
+    # - name: Apply the daemon config before anything depends on it
+    #   ansible.builtin.meta: flush_handlers
+
+    - name: Ensure Docker is running and starts on boot
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+      # `enabled: true` is the difference between "Docker is running" and
+      # "Docker will still be running after the 3am reboot nobody told you about".
+
+    - name: Let the login user run Docker without sudo
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true # `append` matters: without it you REPLACE their groups
+                     # and quietly remove them from sudo. Read the docs.
+
+    # ── Put the application on the box ────────────────────────────────────
+
+    - name: Pull the Campus Notifier image
+      community.docker.docker_image:
+        name: "{{ app_image }}"
+        source: pull
+      # The module checks for the image first. If the box already has it, this
+      # task reports `ok`, not `changed`.
+
+    # ── drill 6: run it. This is where the session turns. ─────────────────
+
+    # TODO (drill 10): this starts the app, but on its own SQLite file. Add -e
+    # options so it uses Postgres. The app reads DB_ENGINE=postgres, POSTGRES_DB,
+    # POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST and POSTGRES_PORT. The
+    # values are db_name, db_user and db_password; the host is
+    # hostvars['db'].private_ip.
+    #
+    # Read: https://docs.docker.com/reference/cli/docker/container/run/#env
+    #       https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_vars_facts.html#information-about-ansible-magic-variables
+    # Done when: /health/ answers from your laptop, and the database has tables:
+    #   ansible database -b --become-user postgres -m shell -a "psql -d campus -c '\dt'"
+    - name: Deploy Campus Notifier
+      tags: deploy
+      ansible.builtin.shell: >
+        docker run -d
+        --name {{ app_name }}
+        --restart unless-stopped
+        -p {{ app_port }}:{{ container_port }}
+        {{ app_image }}
+
+    - name: Wait for Campus Notifier to answer
+      tags: deploy
+      ansible.builtin.uri:
+        url: "http://localhost:{{ app_port }}/health/"
+        status_code: 200
+      register: health
+      retries: 20 # the container runs migrations before it listens
+      delay: 3
+      until: health is succeeded
+
+    - name: Show what the app said
+      tags: deploy
+      ansible.builtin.debug:
+        msg: "{{ health.json }}"
+
+  handlers:
+    # A handler runs ONLY if a task notified it, and only ONCE at the end of the
+    # play, no matter how many tasks notified it. It is how you restart a service
+    # when its config actually changed — and not when it didn't.
+    - name: Restart docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted

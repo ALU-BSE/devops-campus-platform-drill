@@ -1,0 +1,34 @@
+# ── Terraform ────────────────────────────────────────────────────────────────
+# State can contain IP addresses, resource ids and, on some providers, secrets.
+# It also does not merge: two people committing state will corrupt it. This is
+# WHY you moved state to HCP Terraform in Phase 1.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+
+# Your public IP and any provider settings. Never commit this.
+terraform.tfvars
+*.auto.tfvars
+
+# ── Python / uv ──────────────────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+db.sqlite3
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+*.pem
+*_rsa
+*_ed25519
+.env
+
+# Editors
+.idea/
+.vscode/
+
+# Database password. The operator generates it; it stays on their laptop.
+ansible/secrets.yml
+# Generated from terraform output on the operator laptop.
+ansible/inventory.ini

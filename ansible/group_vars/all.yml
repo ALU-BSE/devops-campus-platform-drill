@@ -1,0 +1,48 @@
+---
+# ═══════════════════════════════════════════════════════════════════════════
+# VARIABLES — owned by R2
+#
+# Everything the playbook needs to know that is not a fact about the machine.
+# One place. No values hardcoded in tasks.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Where the app lives on the server.
+app_name: campus-notifier
+
+# The image you published in Pre-Class 1. It is public, so the box needs no
+# registry credentials to pull it. Use the Docker Hub user of one team member.
+app_image: CHANGE-ME/campus-event-notifier:v1
+
+# The port the Campus Notifier listens on INSIDE its container. This is fixed by
+# the image and is not a deployment choice.
+container_port: 8000
+
+# The port the box exposes to the world. This comes from the inventory, which
+# comes from `terraform output`, i.e. from the infrastructure you built last
+# session. The default is 8000 on every track, and the playbook does not care
+# if you changed it, because it never hardcodes it.
+#
+# `app_port` is set per-host in inventory.ini. This is only the fallback.
+app_port: 8000
+
+# The database the app uses. The password is not here: it is in secrets.yml,
+# which only the operator has and Git ignores.
+db_name: campus
+db_user: campus
+
+# Packages the box needs before Docker can be installed or managed.
+#
+# python3-docker matters more than it looks: community.docker's modules run ON
+# THE TARGET, and they need the Docker SDK for Python there. Without it you get
+# "Failed to import the required Python library (Docker SDK for Python)" — which
+# is a confusing error to receive on your own laptop about someone else's box.
+base_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - docker.io
+  - python3-docker
+
+db_packages:
+  - postgresql
+  - python3-psycopg2

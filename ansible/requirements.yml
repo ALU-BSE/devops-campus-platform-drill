@@ -1,0 +1,10 @@
+---
+# Ansible ships with a core set of modules. Anything else lives in a COLLECTION
+# you install separately -- this is the equivalent of a requirements.txt.
+#
+# Install it (pre-work):   ansible-galaxy collection install -r requirements.yml
+collections:
+  - name: community.docker
+    version: ">=3.4.0"
+  - name: community.postgresql
+    version: ">=3.4.0"
