@@ -34,7 +34,7 @@ resource "azurerm_network_security_group" "main" {
 
   # ── Inbound: the application ──────────────────────────────────────────────
   # TODO (drill 2): nothing can reach the app on var.app_port. Add a security_rule
-  # with priority 110. SSH is for your team. Who is the app for? destination_port_range
+  # with priority 110. SSH is for you. Who is the app for? destination_port_range
   # is a string, so use tostring(var.app_port).
   #
   # Read: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_group#security_rule-1

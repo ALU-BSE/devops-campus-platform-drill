@@ -9,19 +9,13 @@ terraform {
   }
 
   # ── DRILL 1 ───────────────────────────────────────────────────────────────
-  # Uncomment this block and replace the organization name with your team's
-  # HCP Terraform org. This is what moves your state OFF your laptop and into
-  # a shared, locked, remote backend.
+  # Uncomment this block. This is what moves your state OFF your laptop and into
+  # a locked, remote backend.
   #
-  # Leave the workspace name exactly as it is.
+  # It names no organization or workspace, because each of you has your own.
+  # They come from TF_CLOUD_ORGANIZATION and TF_WORKSPACE (see drill 1).
   #
-  # cloud {
-  #   organization = "alu-devops-CHANGE-ME"
-  #
-  #   workspaces {
-  #     name = "campus-notifier-infra"
-  #   }
-  # }
+  # cloud {}
   # ───────────────────────────────────────────────────────────────────────────
 }
 

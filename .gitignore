@@ -28,7 +28,7 @@ db.sqlite3
 .idea/
 .vscode/
 
-# Database password. The operator generates it; it stays on their laptop.
+# Database password. Each person generates their own; it stays on their laptop.
 ansible/secrets.yml
-# Generated from terraform output on the operator laptop.
+# Generated from terraform output on each laptop.
 ansible/inventory.ini

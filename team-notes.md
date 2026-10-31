@@ -1,11 +1,10 @@
 # Team notes
 
 Track:
-Operator:
 
 ## Roles
 
-- R1 (operator):
+- R1:
 - R2:
 - R3:
 - R4:
@@ -54,5 +53,13 @@ Operator:
 
 ```
 ```
+
+## Each member's own run
+
+Name: drill 6 verified (yes/no), two runs with changed=0 (yes/no), destroyed after session 2 (yes/no)
+
+-
+-
+-
 
 ## Closing round

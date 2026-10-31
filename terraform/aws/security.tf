@@ -33,7 +33,7 @@ resource "aws_security_group" "app" {
 
   # ── Inbound: the application ──────────────────────────────────────────────
   # TODO (drill 2): nothing can reach the app on var.app_port. Add an ingress rule.
-  # SSH is for your team. Who is the app for? Say your answer before you pick the
+  # SSH is for you. Who is the app for? Say your answer before you pick the
   # source range.
   #
   # Read: https://registry.terraform.io/providers/hashicorp/aws/5.100.0/docs/resources/security_group#ingress
